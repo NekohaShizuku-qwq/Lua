@@ -1,0 +1,619 @@
+--一只若男制作
+--倒卖必究
+V = {}
+
+function 初始化()
+    local uin = CurEventParam.TriggerByPlayer
+    删除框选特效(uin)
+    删除线条(uin)
+    删除投影(uin)
+    V[uin] = {}
+    V[uin]["准星长度"] = 1
+    V[uin]["连线位置组"] = {}
+    V[uin]["左前下角"] = {x=0,y=-99,z=0}
+    V[uin]["右后上角"] = {x=0,y=-99,z=0}
+    V[uin]["优化1"] = {x=0,y=-99,z=0}
+    V[uin]["优化2"] = {x=0,y=-99,z=0}
+    V[uin]["粘贴字符串"] = ""
+    V[uin]["旋转角度"] = 0
+    V[uin]["max层"] = 256
+    V[uin]["数据组"] = {}
+    V[uin]["是否统计过放置"] = {}
+    V[uin]["统计放置数量"] = {}
+    V[uin]["是否统计过"] = {}
+    V[uin]["统计id和数量"] = {}
+    V[uin]["投影投掷物id"] = {}
+    V[uin]["操作状态"] = ""
+    V[uin]["范围边长"] = 2
+    V[uin]["min层"] = 0
+    V[uin]["潜行"] = true
+    V[uin]["边框特效"] = false
+    V[uin]["数据"] = {}
+    V[uin]["显示层数特效"] = {}
+end
+
+function 解析(uin, 文件)
+    V[uin]["数据"] = {}
+    local _, strs = Game:splitStr(文件, '/')
+    for i = 3, #strs do
+        local _, strs1 = Game:splitStr(strs[i], '|')
+        local 层 = strs1[2]
+        if rawget(V[uin]["数据"], 层) == nil then
+            V[uin]["数据"][层] = {}
+        end
+        table.insert(V[uin]["数据"][层], {
+            tonumber(strs1[1]),
+            tonumber(strs1[2]),
+            tonumber(strs1[3]),
+            strs1[4],
+            strs1[5],
+            strs1[6]
+        })
+    end
+    Game:msgBox("解析完成,共"..(#strs-2).."条数据!")
+end
+
+function bc(uin, zuo, you)
+    local biao = {
+        zuo.x .. "|" .. zuo.y .. "|" .. zuo.z,
+        you.x .. "|" .. you.y .. "|" .. you.z
+    }
+    local rw, zong = 0, (you.z - zuo.z + 1) * (you.x - zuo.x + 1) * (you.y - zuo.y + 1)
+    
+    for y = zuo.y, you.y do
+        for z_block = zuo.z, you.z, 16 do
+            local end_z = math.min(z_block + 15, you.z)
+            for x_block = zuo.x, you.x, 16 do
+                local end_x = math.min(x_block + 15, you.x)
+                for z = z_block, end_z do
+                    for x = x_block, end_x do
+                        rw = rw + 1
+                        local result, id = Block:getBlockID(x, y, z)
+                        if id ~= 0 then
+                            local result, data = Block:getBlockData(x, y, z)
+                            local result, isactive = Block:getBlockPowerStatus({x = x, y = y, z = z})
+                            biao[#biao + 1] = table.concat({x, y, z, id, data, tostring(isactive)}, "|")
+                        end
+                        if rw % 512 == 0 or rw >= 0.999*zong then
+                            threadpool:wait(0.05)
+                            Game:msgBox(("任务进度: %.2f%%"):format(rw / zong * 100))
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return table.concat(biao, "/")
+end
+
+function bllx(uin, z1,z2)
+    local zf=1
+    if z1.x ~= z2.x then
+        if z1.x < z2.x then zf = 1 else zf = -1 end
+        for i = z1.x, z2.x, zf do
+            table.insert(V[uin]["连线位置组"], {x=i,y=z1.y,z=z1.z})
+        end
+    elseif z1.y ~= z2.y then
+        if z1.y < z2.y then zf = 1 else zf = -1 end
+        for i = z1.y, z2.y, zf do
+            table.insert(V[uin]["连线位置组"], {x=z1.x,y=i,z=z1.z})
+        end
+    else
+        if z1.z < z2.z then zf = 1 else zf = -1 end
+        for i = z1.z, z2.z, zf do
+            table.insert(V[uin]["连线位置组"], {x=z1.x,y=z1.y,z=i})
+        end
+    end
+end
+
+function 删除框选特效(uin)
+    if rawget(V, uin) ~= nil and rawget(V[uin], "连线位置组") ~= nil then
+        for _, zhi in ipairs(V[uin]["连线位置组"]) do
+            World:stopEffectOnPosition(zhi.x,zhi.y,zhi.z,2918)
+        end
+    end
+end
+
+function lianxian(uin, wz1,wz2) 
+    local t2x, t2y, t2z = V[uin]["优化1"].x, V[uin]["优化1"].y, V[uin]["优化1"].z
+    local t4x, t4y, t4z = V[uin]["优化2"].x, V[uin]["优化2"].y, V[uin]["优化2"].z
+    local w1x, w1y, w1z = math.floor(wz1.x), math.floor(wz1.y), math.floor(wz1.z)
+    local w3x, w3y, w3z = math.floor(wz2.x), math.floor(wz2.y), math.floor(wz2.z)
+    if w1x ~= t2x or w1y ~= t2y or w1z ~= t2z or w3x ~= t4x or w3y ~= t4y or w3z ~= t4z then
+        V[uin]["优化1"] = {x=w1x, y=w1y, z=w1z}
+        V[uin]["优化2"] = {x=w3x, y=w3y, z=w3z}
+        删除框选特效(uin)
+        local 表 = {
+            {x=wz1.x, y=wz1.y, z=wz1.z},
+            {x=wz2.x, y=wz1.y, z=wz1.z},
+            {x=wz1.x, y=wz2.y, z=wz1.z},
+            {x=wz1.x, y=wz1.y, z=wz2.z},
+            {x=wz2.x, y=wz2.y, z=wz2.z},
+            {x=wz1.x, y=wz2.y, z=wz2.z},
+            {x=wz2.x, y=wz1.y, z=wz2.z},
+            {x=wz2.x, y=wz2.y, z=wz1.z}
+        }
+        V[uin]["连线位置组"] = 表
+        if V[uin]["边框特效"] == true then
+            bllx(uin, {x=wz1.x, y=wz1.y, z=wz1.z}, {x=wz2.x, y=wz1.y, z=wz1.z})
+            bllx(uin, {x=wz2.x, y=wz1.y, z=wz1.z}, {x=wz2.x, y=wz2.y, z=wz1.z})
+            bllx(uin, {x=wz2.x, y=wz2.y, z=wz1.z}, {x=wz1.x, y=wz2.y, z=wz1.z})
+            bllx(uin, {x=wz1.x, y=wz2.y, z=wz1.z}, {x=wz1.x, y=wz1.y, z=wz1.z})
+            bllx(uin, {x=wz1.x, y=wz1.y, z=wz1.z}, {x=wz1.x, y=wz1.y, z=wz2.z})
+            bllx(uin, {x=wz2.x, y=wz1.y, z=wz1.z}, {x=wz2.x, y=wz1.y, z=wz2.z})
+            bllx(uin, {x=wz2.x, y=wz2.y, z=wz1.z}, {x=wz2.x, y=wz2.y, z=wz2.z})
+            bllx(uin, {x=wz1.x, y=wz2.y, z=wz1.z}, {x=wz1.x, y=wz2.y, z=wz2.z})
+            bllx(uin, {x=wz1.x, y=wz1.y, z=wz2.z}, {x=wz2.x, y=wz1.y, z=wz2.z})
+            bllx(uin, {x=wz2.x, y=wz1.y, z=wz2.z}, {x=wz2.x, y=wz2.y, z=wz2.z})
+            bllx(uin, {x=wz2.x, y=wz2.y, z=wz2.z}, {x=wz1.x, y=wz2.y, z=wz2.z})
+            bllx(uin, {x=wz1.x, y=wz2.y, z=wz2.z}, {x=wz1.x, y=wz1.y, z=wz2.z})
+        end
+        local lxwz = V[uin]["连线位置组"]
+        for _, zhi in ipairs(lxwz) do
+            World:stopEffectOnPosition(zhi.x,zhi.y,zhi.z,2918)
+            World:playParticalEffect(zhi.x,zhi.y,zhi.z,2918,1,9999999999999,true)
+        end
+    end
+end
+
+function moc(uin)
+    local result,xx ,yy, zz=Player:getAimPos(uin)
+    local result,x, y, z=Actor:getPosition(uin)
+    return (((xx-x)^2)+((yy-y-1.5)^2)+((zz-z)^2))^0*5
+end
+
+function zxwz(uin, n)
+    local _,xx ,yy, zz=Player:getAimPos(uin)
+    local _,x0, y0, z0=Actor:getPosition(uin)
+    return {
+        x=x0+(n*(xx-x0))/moc(uin), 
+        y=y0+(n*(yy-y0-1.5))/moc(uin), 
+        z=z0+(n*(zz-z0))/moc(uin)
+    }
+end
+
+function xuanqu(uin)
+    local _,xx,yy,zz=Player:getAimPos(uin)
+    repeat
+        local l = V[uin]["准星长度"]
+        local zzz = zxwz(uin, l)
+        local x, y, z = zzz.x, zzz.y, zzz.z
+        local s1, s2, s3, s4, s5, s6 = 0, 0, 0, 0, 0, 0
+        if x >= xx then s1, s4 = xx, x else s4, s1 = xx, x end
+        if y >= yy then s2, s5 = yy, y else s5, s2 = yy, y end
+        if z >= zz then s3, s6 = zz, z else s6, s3 = zz, z end
+        threadpool:wait(0.2)
+        lianxian(uin, {x=math.floor(s1), y=math.floor(s2), z=math.floor(s3)}, {x=math.floor(s4), y=math.floor(s5), z=math.floor(s6)})
+        V[uin]["左前下角"] = {x=math.floor(s1), y=math.floor(s2), z=math.floor(s3)}
+        V[uin]["右后上角"] = {x=math.floor(s4), y=math.floor(s5), z=math.floor(s6)}
+    until V[uin]["操作状态"] ~= "框选区域"
+    删除框选特效(uin)
+end
+
+function hz(uin)
+    local _, jg = Game:splitStr(V[uin]["粘贴字符串"], '/')
+    local _, parts = Game:splitStr(jg[1], '|')
+    return {x = tonumber(parts[1]), y = tonumber(parts[2]), z = tonumber(parts[3])}
+end
+
+function hy(uin)
+    local _, jg = Game:splitStr(V[uin]["粘贴字符串"], '/')
+    local _, parts = Game:splitStr(jg[2], '|')
+    return {x = tonumber(parts[1]), y = tonumber(parts[2]), z = tonumber(parts[3])}
+end
+
+function yuanxin(uin, O, wz, n)
+    local theta = math.rad(n)
+    local cosTheta = math.cos(theta)
+    local sinTheta = math.sin(theta)
+    local dx = wz.x - O.x
+    local dz = wz.z - O.z
+    local newX = dx * cosTheta + dz * sinTheta
+    local newZ = -dx * sinTheta + dz * cosTheta
+    return {
+        x = O.x + newX,
+        y = wz.y,
+        z = O.z + newZ
+    }
+end
+
+function py(uin, wz, dw, xl)
+    local xk, yk, zk = xl.x - dw.x, xl.y - dw.y, xl.z - dw.z
+    return yuanxin(uin, V[uin]["左前下角"], {x=wz.x+xk, y=wz.y+yk, z=wz.z+zk}, V[uin]["旋转角度"])
+end
+
+function getDirectionAngles(uin, direction, id)
+    local _, data = Block:getBlockDataByDir(id, 0)
+    local _, data1 = Block:getBlockDataByDir(id, 5)
+    if data == 0 and data1 == 0 then return 0, 0
+    elseif data == 0 and data1 == 4 then
+        local inverted = direction >= 4
+        local base_dir = direction % 4
+        local stair_horizontal_map = { [0] = -90, [1] = 90, [2] = 180, [3] = 0 }
+        local horizontal = stair_horizontal_map[base_dir] or 0
+        local vertical = inverted and -180 or -90
+        return horizontal, vertical
+    elseif data == 1 and data1 == 0 then
+        local direction_map = {
+            [0] = {0, 0}, [1] = {90, -90}, [2] = {-90, -90},
+            [3] = {0, -90}, [4] = {180, -90}, [5] = {0, -180}
+        }
+        local angles = direction_map[direction]
+        return angles and angles[1] or 0, angles and angles[2] or 0
+    else return 0, 0 end
+end
+
+function get_new_direction(uin, current_dir, n, id)
+    local _, data1 = Block:getBlockDataByDir(id, 0)
+    local _, data2 = Block:getBlockDataByDir(id, 5)
+    if data1 == 0 and data2 == 0 then return 0
+    elseif data1 == 0 and data2 == 4 then
+        local inverted = current_dir >= 4
+        local base_dir = current_dir % 4
+        local stair_dir_to_degree = { [0] = 90, [1] = 270, [2] = 0, [3] = 180 }
+        local new_degree = (stair_dir_to_degree[base_dir] + n) % 360
+        local stair_degree_to_dir = { [0] = 2, [90] = 0, [180] = 3, [270] = 1 }
+        return stair_degree_to_dir[new_degree] + (inverted and 4 or 0)
+    elseif data1 == 1 and data2 == 0 then
+        if current_dir >= 1 and current_dir <= 4 then
+            local dir_to_degree = { [1] = 270, [2] = 90, [3] = 180, [4] = 0 }
+            local new_degree = (dir_to_degree[current_dir] + n) % 360
+            local degree_to_dir = { [0] = 4, [90] = 2, [180] = 3, [270] = 1 }
+            return degree_to_dir[new_degree]
+        else return current_dir end
+    else return current_dir end
+end
+
+function jians(uin, wz, id, data, bool)
+    for iddd = 1260, 1262 do
+        World:stopEffectOnPosition(wz.x, wz.y, wz.z, iddd)
+    end
+    if rawget(V[uin]["数据组"], wz.y) == nil then
+        V[uin]["数据组"][wz.y] = {}
+    end
+    if rawget(V[uin]["数据组"][wz.y], wz.x..","..wz.y..","..wz.z) == nil then
+        V[uin]["数据组"][wz.y][wz.x..","..wz.y..","..wz.z] = {wz.x, wz.y, wz.z, id, data, bool}
+    end
+    World:despawnActor(V[uin]["投影投掷物id"][wz.x..","..wz.y..","..wz.z])
+    local _, idd = Block:getBlockID(wz.x, wz.y, wz.z)
+    if idd == 0 or tonumber(idd) == tonumber(id) then
+        tong_ji(uin, id, wz, 1)
+        if idd == 0 then
+            local θ, Φ = getDirectionAngles(uin, get_new_direction(uin, tonumber(data), V[uin]["旋转角度"], id))
+            local _, faced = Block:GetBlockFacade(tonumber(id))
+            local _, tzwid = World:spawnProjectileByDir(uin, 12298, wz.x+0.5, wz.y+0.5, wz.z+0.5, wz.x+0.5, wz.y+0.5, wz.z+0.5, 0)
+            Actor:changeCustomModel(tzwid, faced)
+            Actor:setFacePitch(tzwid, Φ)
+            Actor:setFaceYaw(tzwid, θ)
+            V[uin]["投影投掷物id"][wz.x..","..wz.y..","..wz.z] = tzwid
+            tong_ji_fang_zhi(uin, id, wz, -1)
+        else
+            tong_ji_fang_zhi(uin, id, wz, 1)
+            local _, kg = Block:getBlockSwitchStatus({x=wz.x, y=wz.y, z=wz.z})
+            local _, dataaa = Block:getBlockData(wz.x, wz.y, wz.z)
+            if tostring(kg) ~= bool then
+                World:playParticalEffect(wz.x, wz.y, wz.z, 1262, 1, 9999999999999, true)
+            end
+            if tonumber(dataaa) ~= tonumber(get_new_direction(uin, tonumber(data), V[uin]["旋转角度"], id)) then
+                World:playParticalEffect(wz.x, wz.y, wz.z, 1260, 1, 9999999999999, true)
+            end
+        end
+    else
+        World:playParticalEffect(wz.x, wz.y, wz.z, 1261, 1, 9999999999999, true)
+    end
+end
+
+function tong_ji(uin, id, wz, jj)
+    if jj == 1 and rawget(V[uin]["是否统计过"], wz.x..","..wz.y..","..wz.z) == nil then
+        V[uin]["是否统计过"][wz.x..","..wz.y..","..wz.z] = id
+        if rawget(V[uin]["统计id和数量"], tostring(id)) == nil then
+            V[uin]["统计id和数量"][tostring(id)] = 1
+            V[uin]["统计放置数量"][tostring(id)] = 0
+        else
+            V[uin]["统计id和数量"][tostring(id)] = V[uin]["统计id和数量"][tostring(id)] + 1
+        end
+    elseif jj == -1 and rawget(V[uin]["是否统计过"], wz.x..","..wz.y..","..wz.z) ~= nil then
+        V[uin]["是否统计过"][wz.x..","..wz.y..","..wz.z] = nil
+        V[uin]["统计id和数量"][tostring(id)] = V[uin]["统计id和数量"][tostring(id)] - 1
+        if V[uin]["统计id和数量"][tostring(id)] == 0 then
+            V[uin]["统计id和数量"][tostring(id)] = nil
+        end
+    end
+end
+
+function tong_ji_fang_zhi(uin, id, wz, jj)
+    if jj == 1 and rawget(V[uin]["是否统计过放置"], wz.x..","..wz.y..","..wz.z) == nil then
+        V[uin]["是否统计过放置"][wz.x..","..wz.y..","..wz.z] = id
+        V[uin]["统计放置数量"][tostring(id)] = V[uin]["统计放置数量"][tostring(id)] + 1
+    elseif jj == -1 and rawget(V[uin]["是否统计过放置"], wz.x..","..wz.y..","..wz.z) ~= nil then
+        V[uin]["是否统计过放置"][wz.x..","..wz.y..","..wz.z] = nil
+        V[uin]["统计放置数量"][tostring(id)] = V[uin]["统计放置数量"][tostring(id)] - 1
+    end
+end
+
+function 删除投影(uin)
+    if rawget(V, uin) ~= nil and rawget(V[uin], "数据组") ~= nil then
+        for key, _ in pairs(V[uin]["数据组"]) do
+            删除指定层数投影(uin, key)
+        end
+    end
+end
+
+function 删除指定层数投影(uin, y)
+    if rawget(V[uin]["数据组"], y) ~= nil then
+        for _, 值 in pairs(V[uin]["数据组"][y]) do
+            for iddd = 1260, 1262 do
+                World:stopEffectOnPosition(值[1], 值[2], 值[3], iddd)
+            end
+            tong_ji(uin, 值[4], {x=值[1], y=值[2], z=值[3]}, -1)
+            tong_ji_fang_zhi(uin, 值[4], {x=值[1], y=值[2], z=值[3]}, -1)
+            World:despawnActor(V[uin]["投影投掷物id"][值[1]..","..值[2]..","..值[3]])
+            V[uin]["投影投掷物id"][值[1]..","..值[2]..","..值[3]] = nil
+        end
+        V[uin]["数据组"][y] = nil
+    end
+end
+
+function 创建投影(uin)
+    local xx, yy, zz = V[uin]["右后上角"].x, V[uin]["右后上角"].y, V[uin]["右后上角"].z
+    V[uin]["判断层数"] = V[uin]["max层"]
+    local h = V[uin]["min层"]
+    while h <= V[uin]["max层"] do
+        if xx ~= V[uin]["右后上角"].x or yy ~= V[uin]["右后上角"].y or zz ~= V[uin]["右后上角"].z then return end
+        创建指定层数投影(uin, h)
+        h = h + 1
+    end
+end
+
+function 创建指定层数投影(uin, y)
+    local h, xx, yy, zz = y, V[uin]["右后上角"].x, V[uin]["右后上角"].y, V[uin]["右后上角"].z
+    if rawget(V[uin]["数据"], tostring(h - V[uin]["左前下角"].y + hz(uin).y)) ~= nil then
+        local 层数据 = V[uin]["数据"][tostring(h - V[uin]["左前下角"].y + hz(uin).y)]
+        local i = 0
+        for _, val in pairs(层数据) do
+            if xx ~= V[uin]["右后上角"].x or yy ~= V[uin]["右后上角"].y or zz ~= V[uin]["右后上角"].z or h > V[uin]["max层"] then return end
+            i = i + 1
+            local x0, y0, z0 = val[1], val[2], val[3]
+            local pyy = py(uin, {x=x0, y=y0, z=z0}, hz(uin), V[uin]["左前下角"])
+            jians(uin, pyy, val[4], val[5], val[6])
+            if i % 8 == 0 then threadpool:wait(0.05) end
+        end
+    end
+end
+
+function 检索附近(param)
+    local uin = CurEventParam.TriggerByPlayer
+    local _, areaid = Area:createAreaRectByRange(V[uin]["左前下角"], V[uin]["右后上角"])
+    local result = Area:posInArea({x=param.x, y=param.y, z=param.z}, areaid)
+    if result == 0 then
+        检索(uin, {x=param.x, y=param.y, z=param.z})
+        检索(uin, {x=param.x+1, y=param.y, z=param.z})
+        检索(uin, {x=param.x-1, y=param.y, z=param.z})
+        检索(uin, {x=param.x, y=param.y, z=param.z+1})
+        检索(uin, {x=param.x, y=param.y, z=param.z-1})
+        检索(uin, {x=param.x, y=param.y+1, z=param.z})
+        检索(uin, {x=param.x, y=param.y-1, z=param.z})
+    end
+end
+
+function 检索(uin, 位置)
+    if rawget(V[uin]["数据组"], 位置.y) ~= nil and rawget(V[uin]["数据组"][位置.y], 位置.x..","..位置.y..","..位置.z) ~= nil then
+        jians(uin, 位置, V[uin]["数据组"][位置.y][位置.x..","..位置.y..","..位置.z][4], V[uin]["数据组"][位置.y][位置.x..","..位置.y..","..位置.z][5], V[uin]["数据组"][位置.y][位置.x..","..位置.y..","..位置.z][6])
+    end
+end
+
+function 放置方块(uin, 位置)
+    if rawget(V[uin]["数据组"], 位置.y) ~= nil and rawget(V[uin]["数据组"][位置.y], 位置.x..","..位置.y..","..位置.z) ~= nil then
+        local id = tonumber(V[uin]["数据组"][位置.y][位置.x..","..位置.y..","..位置.z][4])
+        local result1 = Backpack:hasItemByBackpackBar(uin, 1, id)
+        local result2 = Backpack:hasItemByBackpackBar(uin, 2, id)
+        local _, scutIdx = Player:getCurShotcut(uin)
+        local _, idd = Block:getBlockID(位置.x, 位置.y, 位置.z)
+        if idd == 0 and (result1 == 0 or result2 == 0) then
+            ::skip::
+            local _, sid = Player:getCurToolID(uin)
+            if tonumber(sid) ~= id then
+                local num, arr = 0, {}
+                if result1 == 0 then
+                    _, num, arr = Backpack:getItemNumByBackpackBar(uin, 1, id)
+                elseif result2 == 0 then
+                    _, num, arr = Backpack:getItemNumByBackpackBar(uin, 2, id)
+                end
+                Backpack:swapGridItem(uin, arr[1], 1000 + scutIdx)
+                threadpool:wait(0.05)
+                goto skip
+            else
+                Block:setBlockAll(位置.x, 位置.y, 位置.z, id, V[uin]["数据组"][位置.y][位置.x..","..位置.y..","..位置.z][5])
+                Block:setBlockSwitchStatus(位置, (V[uin]["数据组"][位置.y][位置.x..","..位置.y..","..位置.z][6] == "true"))
+                Backpack:removeGridItemByItemID(uin, id, 1)
+                jians(uin, 位置, id, V[uin]["数据组"][位置.y][位置.x..","..位置.y..","..位置.z][5], V[uin]["数据组"][位置.y][位置.x..","..位置.y..","..位置.z][6])
+            end
+        else return end
+    end
+end
+
+function 快捷栏控制(param)
+    local uin = CurEventParam.TriggerByPlayer
+    local _, 快捷栏id = Player:getCurShotcut(uin)
+    快捷栏id = 快捷栏id + 1
+    if V[uin]["操作状态"] == "投影解锁" and V[uin]["潜行"] == true then
+        local 对应表 = {
+            [1] = {0, 0, 1}, [2] = {0, 0, -1}, [3] = {-1, 0, 0},
+            [4] = {1, 0, 0}, [5] = {0, 1, 0}, [6] = {0, -1, 0},
+            [7] = -90, [8] = 90
+        }
+        if 快捷栏id <= 6 then
+            V[uin]["左前下角"].x = V[uin]["左前下角"].x + 对应表[快捷栏id][1]
+            V[uin]["左前下角"].y = V[uin]["左前下角"].y + 对应表[快捷栏id][2]
+            V[uin]["左前下角"].z = V[uin]["左前下角"].z + 对应表[快捷栏id][3]
+            V[uin]["右后上角"].x = V[uin]["右后上角"].x + 对应表[快捷栏id][1]
+            V[uin]["右后上角"].y = V[uin]["右后上角"].y + 对应表[快捷栏id][2]
+            V[uin]["右后上角"].z = V[uin]["右后上角"].z + 对应表[快捷栏id][3]
+            V[uin]["max层"] = V[uin]["右后上角"].y
+        else
+            V[uin]["旋转角度"] = V[uin]["旋转角度"] + 对应表[快捷栏id]
+            V[uin]["右后上角"] = yuanxin(uin, V[uin]["左前下角"], V[uin]["右后上角"], 对应表[快捷栏id])
+        end
+        V[uin]["min层"] = V[uin]["左前下角"].y
+        lianxian(uin, V[uin]["左前下角"], V[uin]["右后上角"])
+        清空统计(uin)
+        删除投影(uin)
+        创建投影(uin)
+    elseif (V[uin]["操作状态"] == "投影锁定" or V[uin]["操作状态"] == "投影锁定+轻松放置") and V[uin]["潜行"] == true then
+        if 快捷栏id == 7 and V[uin]["max层"] > V[uin]["左前下角"].y then
+            删除指定层数投影(uin, V[uin]["max层"])
+            V[uin]["max层"] = V[uin]["max层"] - 1
+            线条(uin)
+            if V[uin]["min层"] > V[uin]["左前下角"].y + 1 then
+                V[uin]["min层"] = V[uin]["min层"] - 1
+            end
+        elseif 快捷栏id == 8 and V[uin]["max层"] < V[uin]["右后上角"].y then
+            V[uin]["max层"] = V[uin]["max层"] + 1
+            线条(uin)
+            创建指定层数投影(uin, V[uin]["max层"])
+        end
+    end
+end
+
+function 线条(uin)
+    创建线条(uin, {x=V[uin]["左前下角"].x, y=V[uin]["max层"], z=V[uin]["左前下角"].z}, {x=V[uin]["右后上角"].x, y=V[uin]["max层"], z=V[uin]["右后上角"].z})
+end
+
+function 创造打印(uin)
+    local 遍历 = 0
+    for key, _ in pairs(V[uin]["数据组"]) do
+        for _, 值 in pairs(V[uin]["数据组"][key]) do
+            Block:setBlockAll(值[1], 值[2], 值[3], tonumber(值[4]), 值[5])
+            Block:setBlockSwitchStatus({x=值[1], y=值[2], z=值[3]}, (值[6] == "true"))
+            遍历 = 遍历 + 1
+            if 遍历 % 128 == 0 then threadpool:wait(0.05) end
+        end
+    end
+end
+
+function 生存打印(uin)
+    local 遍历 = 0
+    for key, _ in pairs(V[uin]["数据组"]) do
+        for _, 值 in pairs(V[uin]["数据组"][key]) do
+            if Backpack:hasItemByBackpackBar(uin,1,tonumber(值[4])) == 0 or Backpack:hasItemByBackpackBar(uin,2,tonumber(值[4])) == 0 then
+                Block:setBlockAll(值[1], 值[2], 值[3], tonumber(值[4]), 值[5])
+                Block:setBlockSwitchStatus({x=值[1], y=值[2], z=值[3]}, (值[6]=="true"))
+            end
+            遍历 = 遍历+1
+            if 遍历 % 128 == 0 then
+                threadpool:wait(0.05)
+            end
+        end
+    end
+end
+
+function 创建线条(uin, 位置1, 位置2)
+    删除线条(uin)
+    local y轴 = 位置1.y
+    local 大小 = 0.2
+    Graphics:createGraphicsLineByPosToPos(位置1.x, y轴, 位置1.z, Graphics:makeGraphicsLineToPos(位置2.x, y轴, 位置1.z, 大小, 0xff0000, 1))
+    Graphics:createGraphicsLineByPosToPos(位置1.x, y轴, 位置1.z, Graphics:makeGraphicsLineToPos(位置1.x, y轴, 位置2.z, 大小, 0xff0000, 2))
+    Graphics:createGraphicsLineByPosToPos(位置2.x, y轴, 位置2.z, Graphics:makeGraphicsLineToPos(位置2.x, y轴, 位置1.z, 大小, 0xff0000, 3))
+    Graphics:createGraphicsLineByPosToPos(位置2.x, y轴, 位置2.z, Graphics:makeGraphicsLineToPos(位置1.x, y轴, 位置2.z, 大小, 0xff0000, 4))
+    V[uin]["显示层数特效"] = {
+        {x=位置1.x, y=y轴, z=位置1.z},
+        {x=位置1.x, y=y轴, z=位置1.z},
+        {x=位置2.x, y=y轴, z=位置2.z},
+        {x=位置2.x, y=y轴, z=位置2.z}
+    }
+end
+
+function 删除线条(uin)
+    if rawget(V, uin) ~= nil and rawget(V[uin], "显示层数特效") ~= nil then
+        for i = 1, 4 do
+            if rawget(V[uin]["显示层数特效"], i) ~= nil then
+                local 表 = V[uin]["显示层数特效"][i]
+                Graphics:removeGraphicsByPos(表.x, 表.y, 表.z, i, 6)
+            end
+        end
+        V[uin]["显示层数特效"] = {}
+    end
+end
+
+function 清空统计(uin)
+    V[uin]["是否统计过放置"] = {}
+    V[uin]["统计放置数量"] = {}
+    V[uin]["是否统计过"] = {}
+    V[uin]["统计id和数量"] = {}
+end
+
+function 判断(param)
+    local uin = CurEventParam.TriggerByPlayer
+    if param.content == "框选" then
+        V[uin]["操作状态"] = "框选区域"
+        xuanqu(uin)
+    elseif param.content == "结束" and V[uin]["操作状态"] == "框选区域" then
+        V[uin]["操作状态"] = ""
+        V[uin]["粘贴字符串"] = bc(uin, V[uin]["左前下角"], V[uin]["右后上角"])
+    elseif param.content == "统计" then
+        for key, value in pairs(V[uin]["统计id和数量"]) do
+            local _,name=Item:getItemName(key)
+            printtag(name, V[uin]["统计放置数量"][key].."/"..value)
+        end
+    elseif param.content == "轻松放置" and V[uin]["操作状态"] == "投影锁定" then
+        V[uin]["操作状态"] = "投影锁定+轻松放置"
+        while V[uin]["操作状态"] == "投影锁定+轻松放置" do
+            local 详细位置, 位置 = {}, {}
+            for i=1, 3.5, 0.5 do
+                详细位置 = zxwz(uin, i)
+                位置 = {x=math.floor(详细位置.x), y=math.floor(详细位置.y), z=math.floor(详细位置.z)}
+                放置方块(uin, 位置)
+                for x1=1, V[uin]["范围边长"] do
+                    放置方块(uin, {x=位置.x-x1, y=位置.y, z=位置.z})
+                end
+                for x2=1, V[uin]["范围边长"] do
+                    放置方块(uin, {x=位置.x+x2, y=位置.y, z=位置.z})
+                end
+                for z1=1, V[uin]["范围边长"] do
+                    放置方块(uin, {x=位置.x, y=位置.y, z=位置.z-z1})
+                end
+                for z2=1, V[uin]["范围边长"] do
+                    放置方块(uin, {x=位置.x, y=位置.y, z=位置.z+z2})
+                end
+            end
+            threadpool:wait(0.1)
+        end
+    elseif param.content == "关闭轻松放置" and V[uin]["操作状态"] == "投影锁定+轻松放置" then
+        V[uin]["操作状态"] = "投影锁定"
+    elseif param.content == "投影" then
+        V[uin]["操作状态"] = "投影解锁"
+        local _,x,y,z=Player:getAimPos(uin)
+        V[uin]["左前下角"] = py(uin, hz(uin), hz(uin), {x=math.floor(x), y=math.floor(y), z=math.floor(z)})
+        V[uin]["右后上角"] = py(uin, hy(uin), hz(uin), {x=math.floor(x), y=math.floor(y), z=math.floor(z)})
+        V[uin]["min层"] = V[uin]["左前下角"].y
+        V[uin]["max层"] = V[uin]["右后上角"].y
+        解析(uin, V[uin]["粘贴字符串"])
+        创建投影(uin)
+    elseif param.content == "锁定" and V[uin]["操作状态"] == "投影解锁" then
+        V[uin]["操作状态"] = "投影锁定"
+        V[uin]["max层"] = V[uin]["右后上角"].y
+        线条(uin)
+    elseif param.content == "解锁" and V[uin]["操作状态"] == "投影锁定" then
+        V[uin]["max层"] = V[uin]["右后上角"].y
+        V[uin]["操作状态"] = "投影解锁"
+        删除线条(uin)
+        创建投影(uin)
+    elseif param.content == "打印" and V[uin]["操作状态"] == "投影锁定" then
+        if World:isGameMakerRunMode() == 0 then
+            创造打印(uin)
+        else
+            生存打印(uin)
+        end
+        删除投影(uin)
+        初始化()
+    elseif param.content == "重置" then
+        初始化()
+    end
+end
+
+ScriptSupportEvent:registerEvent([=[Player.NewInputContent]=], 判断)
+ScriptSupportEvent:registerEvent([=[Player.ClickBlock]=], 检索附近)
+ScriptSupportEvent:registerEvent([=[Block.Dig.End]=], 检索附近)
+ScriptSupportEvent:registerEvent([=[Block.Trigger]=], 检索附近)
+ScriptSupportEvent:registerEvent([=[Player.SelectShortcut]=], 快捷栏控制)
+ScriptSupportEvent:registerEvent([=[Game.AnyPlayer.EnterGame]=], 初始化)
